@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open:*)",
+      "Bash(lsof:*)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:joshuaproject.net)",
+      "Bash(gh api:*)"
+    ]
+  }
+}
