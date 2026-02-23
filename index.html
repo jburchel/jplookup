@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PG Lookup — People Group Matcher</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d2e;
+      --surface2: #242738;
+      --border: #2e3152;
+      --text: #e2e8f0;
+      --muted: #7c84a8;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    body.light {
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface2: #eef0f7;
+      --border: #d0d5e8;
+      --text: #1a1d2e;
+      --muted: #6b7280;
+      --accent: #4f52c8;
+      --accent-light: #6366f1;
+      --success: #059669;
+      --warning: #d97706;
+      --error: #dc2626;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+    header .subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Controls ── */
+    .controls {
+      width: 300px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .tab-bar {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .tab-btn {
+      flex: 1; padding: 8px 12px; border: none;
+      background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+
+    .section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .field label { font-size: 12px; font-weight: 500; color: var(--text); }
+    .field input, .field textarea {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 12px;
+      padding: 7px 10px; outline: none; width: 100%; font-family: inherit;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .hint { font-size: 10px; color: var(--muted); }
+
+    .btn {
+      padding: 10px 16px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-light); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); flex: 1;
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+    .preset-chip {
+      font-size: 10px; padding: 4px 8px; border-radius: 20px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .preset-chip:hover { border-color: var(--accent); color: var(--accent-light); }
+
+    /* ── Right Panel ── */
+    .right-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    #single-right { flex: 1; overflow-y: auto; padding: 20px; }
+
+    #bulk-right {
+      flex: 1; overflow: hidden;
+      flex-direction: column; display: none;
+    }
+    #bulk-right.visible { display: flex; }
+
+    /* ── Result states ── */
+    .state-box {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px 20px; gap: 10px; color: var(--muted);
+    }
+    .state-icon { font-size: 36px; }
+    .state-msg { font-size: 15px; font-weight: 500; color: var(--text); }
+    .state-sub { font-size: 12px; text-align: center; max-width: 380px; }
+
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .results-grid { display: flex; flex-direction: column; gap: 12px; }
+
+    .result-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; display: flex;
+    }
+    .result-card.top-match {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(99,102,241,0.3), 0 4px 16px rgba(99,102,241,0.12);
+    }
+
+    .card-main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .pg-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+    .pg-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+    .pg-meta span { display: flex; align-items: center; gap: 4px; }
+
+    .claude-reason {
+      margin-top: 4px; padding: 10px 12px; border-radius: 8px;
+      font-size: 12px; line-height: 1.5;
+    }
+    .claude-reason.high   { background: rgba(99,102,241,0.08);  border: 1px solid rgba(99,102,241,0.2); }
+    .claude-reason.medium { background: rgba(245,158,11,0.07);   border: 1px solid rgba(245,158,11,0.2); }
+    .claude-reason.low    { background: rgba(124,132,168,0.07);  border: 1px solid rgba(124,132,168,0.15); }
+    .cr-label {
+      display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 5px; color: var(--muted);
+    }
+
+    .score-badge {
+      padding: 14px 16px; display: flex; flex-direction: column;
+      align-items: center; gap: 10px; border-left: 1px solid var(--border); min-width: 110px;
+    }
+    .match-badge {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px;
+    }
+    .match-badge.top     { background: rgba(99,102,241,0.15); color: var(--accent-light); border: 1px solid rgba(99,102,241,0.3); }
+    .match-badge.good    { background: rgba(245,158,11,0.12);  color: var(--warning);      border: 1px solid rgba(245,158,11,0.3); }
+    .match-badge.possible{ background: rgba(124,132,168,0.1);  color: var(--muted);        border: 1px solid rgba(124,132,168,0.2); }
+
+    .badge-detail { font-size: 10px; color: var(--muted); text-align: center; line-height: 1.4; }
+    .badge-detail strong { color: var(--text); font-size: 12px; }
+
+    .error-box {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+      border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--error);
+    }
+
+    /* ── Bulk ── */
+    .bulk-results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .bulk-results-title { font-size: 13px; font-weight: 600; }
+    #bulk-summary { font-size: 11px; color: var(--muted); margin-left: 10px; }
+
+    .copy-btn {
+      font-size: 11px; padding: 4px 10px; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--surface2); color: var(--muted); cursor: pointer;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+    .bulk-table-wrap { overflow: auto; flex: 1; }
+    .bulk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .bulk-table th {
+      padding: 8px 10px; border-bottom: 2px solid var(--border); text-align: left;
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted); white-space: nowrap;
+      position: sticky; top: 0; background: var(--bg);
+    }
+    .bulk-table td {
+      padding: 8px 10px; border-bottom: 1px solid rgba(46,49,82,0.5);
+      vertical-align: top; line-height: 1.45;
+    }
+    .bulk-row:hover td { background: rgba(99,102,241,0.04); }
+    .bulk-row.high td:first-child   { border-left: 3px solid var(--success); }
+    .bulk-row.medium td:first-child { border-left: 3px solid var(--warning); }
+    .bulk-row.low td:first-child    { border-left: 3px solid var(--muted); }
+    .bulk-row.error td:first-child  { border-left: 3px solid var(--error); }
+    .bulk-row.pending td            { color: var(--muted); }
+    .bulk-row.processing td         { color: var(--muted); font-style: italic; }
+
+    .bulk-conf-badge {
+      display: inline-block; font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 10px;
+    }
+    .bulk-conf-badge.high   { background: rgba(16,185,129,0.15);  color: var(--success); }
+    .bulk-conf-badge.medium { background: rgba(245,158,11,0.15);   color: var(--warning); }
+    .bulk-conf-badge.low    { background: rgba(124,132,168,0.15);  color: var(--muted); }
+    .bulk-conf-badge.error  { background: rgba(239,68,68,0.1);     color: var(--error); }
+
+    .bulk-match-name { font-weight: 600; }
+    .bulk-reasoning  { font-size: 11px; color: var(--muted); font-style: italic; max-width: 260px; }
+    .bulk-empty { text-align: center; padding: 50px 20px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>PG Lookup &mdash; People Group Matcher</h1>
+    <div class="subtitle">Match reported people group names to Joshua Project entries using Claude AI</div>
+  </div>
+  <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+    <button type="button" id="dl-csv-btn" onclick="downloadSessionCSV()"
+      style="display:none; font-size:11px; padding:5px 12px; border:1px solid var(--border);
+             border-radius:6px; background:var(--surface2); color:var(--muted); cursor:pointer;">
+      &#8681; Download Session CSV
+    </button>
+    <button type="button" id="theme-toggle" onclick="toggleTheme()"
+      style="font-size:16px; padding:4px 8px; border:1px solid var(--border);
+             border-radius:6px; background:var(--surface2); cursor:pointer; line-height:1;">
+      🌙
+    </button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- ── CONTROLS ── -->
+  <div class="controls">
+
+    <div class="tab-bar">
+      <button type="button" class="tab-btn active" id="tab-single" onclick="switchTab('single')">Single Lookup</button>
+      <button type="button" class="tab-btn" id="tab-bulk" onclick="switchTab('bulk')">Bulk Lookup</button>
+    </div>
+
+    <div>
+      <div class="section-title">Claude AI</div>
+      <div class="field">
+        <label>Anthropic API Key</label>
+        <input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off" />
+        <span class="hint">Saved locally in your browser &mdash; never sent elsewhere</span>
+      </div>
+    </div>
+
+    <!-- ── Single mode panel ── -->
+    <div id="panel-single">
+
+      <div>
+        <div class="section-title">Reported Information</div>
+
+        <div class="field">
+          <label>Reported PG Name <span style="color:var(--error)">*</span></label>
+          <input type="text" id="pg-name" placeholder="e.g. Adibasi, Kotias, Brahmin Telegu..." />
+          <span class="hint">As reported &mdash; may be misspelled or a local/informal name</span>
+        </div>
+
+        <div class="field">
+          <label>Country</label>
+          <input type="text" id="country" placeholder="e.g. Bangladesh, India, Pakistan..." />
+        </div>
+
+        <div class="field">
+          <label>City / Region</label>
+          <input type="text" id="city" placeholder="e.g. Dhaka, Hyderabad, Chittagong..." />
+        </div>
+
+        <div class="field">
+          <label>Religion</label>
+          <input type="text" id="religion" placeholder="e.g. Islam, Hinduism, Buddhism..." />
+        </div>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div class="section-title">Quick Examples</div>
+        <div class="presets">
+          <div class="preset-chip" onclick="applyPreset('adibasi')">Adibasi &mdash; Bangladesh</div>
+          <div class="preset-chip" onclick="applyPreset('india-brahmin')">Brahmin &mdash; India</div>
+          <div class="preset-chip" onclick="applyPreset('indonesia-java')">Javanese &mdash; Indonesia</div>
+          <div class="preset-chip" onclick="applyPreset('pakistan-punjabi')">Punjabi &mdash; Pakistan</div>
+          <div class="preset-chip" onclick="applyPreset('ethiopia')">Amhara &mdash; Ethiopia</div>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="search-btn" onclick="doSearch()">
+        Find JP Match
+      </button>
+
+    </div>
+
+    <!-- ── Bulk mode panel ── -->
+    <div id="panel-bulk" style="display:none">
+
+      <div>
+        <div class="section-title">Name List</div>
+        <div class="field">
+          <label>Paste Names (one per line)</label>
+          <textarea id="bulk-input" rows="10" placeholder="Adibasi, Bangladesh&#10;Brahmin, India&#10;Javanese, Indonesia&#10;Amhara, Ethiopia&#10;Punjabi, Pakistan"></textarea>
+          <span class="hint">Optional: <code>Name, Country</code> per line</span>
+        </div>
+
+        <div id="bulk-progress-wrap" style="display:none; margin-bottom:10px;">
+          <div style="height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+            <div id="bulk-progress-bar" style="height:100%; background:var(--accent); transition:width 0.3s; width:0%"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;" id="bulk-progress-label"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary" style="flex:2" id="bulk-run-btn" onclick="doBulkSearch()">Process All</button>
+        <button type="button" class="btn btn-secondary" onclick="clearBulk()">Clear</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div class="right-panel">
+
+    <!-- Single mode right -->
+    <div id="single-right">
+      <div id="results-area">
+        <div class="state-box">
+          <div class="state-icon">&#128269;</div>
+          <div class="state-msg">Enter a reported people group name</div>
+          <div class="state-sub">Claude will identify the best Joshua Project match using its knowledge of JP people groups worldwide &mdash; no JP API key required</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk mode right -->
+    <div id="bulk-right">
+      <div class="bulk-results-header">
+        <div style="display:flex;align-items:center;">
+          <span class="bulk-results-title">Bulk Results</span>
+          <span id="bulk-summary"></span>
+        </div>
+        <button type="button" class="copy-btn" id="export-btn" onclick="exportBulkCSV()" style="display:none">
+          Export CSV
+        </button>
+      </div>
+      <div class="bulk-table-wrap">
+        <table class="bulk-table">
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th style="min-width:140px">Reported Name</th>
+              <th style="width:90px">Country</th>
+              <th style="min-width:160px">JP Match</th>
+              <th style="width:80px">PeopleID3</th>
+              <th style="width:82px">Confidence</th>
+              <th style="width:100px">Language</th>
+              <th style="width:100px">Religion</th>
+              <th>AI Reasoning</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-tbody">
+            <tr><td colspan="9" class="bulk-empty">Paste names in the panel on the left, then click &ldquo;Process All&rdquo;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  pgName: '',
+  city: '',
+  country: '',
+  religion: '',
+  anthropicKey: '',
+  results: [],
+  lastError: null,
+  isLoading: false,
+  hasSearched: false,
+  bulkMode: false,
+  bulkItems: [],
+  bulkResults: [],
+  bulkProcessing: false,
+};
+
+const PRESETS = {
+  'adibasi':          { pgName: 'Adibasi',        country: 'Bangladesh', city: '',          religion: '' },
+  'india-brahmin':    { pgName: 'Brahmin Telegu',  country: 'India',      city: 'Hyderabad', religion: '' },
+  'indonesia-java':   { pgName: 'Javanese',         country: 'Indonesia',  city: 'Solo',      religion: '' },
+  'pakistan-punjabi': { pgName: 'Punjabi',           country: 'Pakistan',   city: 'Lahore',    religion: '' },
+  'ethiopia':         { pgName: 'Amhara',            country: 'Ethiopia',   city: 'Gondar',    religion: '' },
+};
+
+const JP_SCALE_LABELS = {
+  '1': 'Least Reached',
+  '2': 'Nominally Reached',
+  '3': 'Minimally Reached',
+  '4': 'Partially Reached',
+  '5': 'Significantly Reached',
+  '6': 'Fully Reached',
+};
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Session History ───────────────────────────────────────────────────────────
+const SESSION_KEY = 'pg_lookup_session';
+
+function loadSessionHistory() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '[]'); } catch { return []; }
+}
+
+function saveToHistory(inputs, results) {
+  const history = loadSessionHistory();
+  const m1 = results[0] || null;
+  const m2 = results[1] || null;
+  history.push({
+    ts: new Date().toLocaleString(),
+    reportedName: inputs.name,
+    country:      inputs.country,
+    city:         inputs.city,
+    religion:     inputs.religion,
+    match1Name:   m1?.name  || '',
+    match1ID:     m1?.peopleid3 || '',
+    match1Conf:   m1?.confidence || '',
+    match2Name:   m2?.name  || '',
+    match2ID:     m2?.peopleid3 || '',
+    match2Conf:   m2?.confidence || '',
+  });
+  localStorage.setItem(SESSION_KEY, JSON.stringify(history));
+  updateDownloadButton(history.length);
+}
+
+function updateDownloadButton(count) {
+  const btn = document.getElementById('dl-csv-btn');
+  if (!btn) return;
+  if (count > 0) {
+    btn.style.display = '';
+    btn.textContent   = `\u2B07 Download Session CSV (${count})`;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function buildCSV(history) {
+  const rows = [[
+    'Timestamp', 'Reported Name', 'Country', 'City', 'Religion',
+    'Match 1 JP Name', 'Match 1 PeopleID3', 'Match 1 Confidence',
+    'Match 2 JP Name', 'Match 2 PeopleID3', 'Match 2 Confidence',
+  ]];
+  for (const h of history) {
+    rows.push([
+      h.ts, h.reportedName, h.country, h.city, h.religion,
+      h.match1Name, h.match1ID, h.match1Conf,
+      h.match2Name, h.match2ID, h.match2Conf,
+    ]);
+  }
+  return rows.map(r => r.map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+}
+
+function downloadSessionCSV() {
+  const history = loadSessionHistory();
+  if (!history.length) return;
+  const date = new Date().toISOString().slice(0,10);
+  const csv  = buildCSV(history);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `pg_lookup_${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('pg_theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function init() {
+  state.anthropicKey = localStorage.getItem('anthropic_api_key') || '';
+
+  // Restore theme preference
+  if (localStorage.getItem('pg_theme') === 'light') {
+    document.body.classList.add('light');
+    document.getElementById('theme-toggle').textContent = '☀️';
+  }
+
+  // Restore button count from any prior session entries
+  updateDownloadButton(loadSessionHistory().length);
+
+  // Auto-download CSV on page close if there are session entries
+  window.addEventListener('beforeunload', () => {
+    const history = loadSessionHistory();
+    if (history.length) downloadSessionCSV();
+  });
+
+  const keyInput = document.getElementById('anthropic-key');
+  keyInput.value = state.anthropicKey;
+  keyInput.addEventListener('input', e => {
+    state.anthropicKey = e.target.value;
+    localStorage.setItem('anthropic_api_key', e.target.value);
+  });
+
+  document.getElementById('pg-name').addEventListener('input',  e => { state.pgName   = e.target.value; });
+  document.getElementById('country').addEventListener('input',  e => { state.country  = e.target.value; });
+  document.getElementById('city').addEventListener('input',     e => { state.city     = e.target.value; });
+  document.getElementById('religion').addEventListener('input', e => { state.religion = e.target.value; });
+
+  ['pg-name','country','city','religion'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSearch(); }
+    });
+  });
+}
+
+function switchTab(mode) {
+  state.bulkMode = (mode === 'bulk');
+  document.getElementById('tab-single').classList.toggle('active', !state.bulkMode);
+  document.getElementById('tab-bulk').classList.toggle('active',    state.bulkMode);
+  document.getElementById('panel-single').style.display = state.bulkMode ? 'none' : '';
+  document.getElementById('panel-bulk').style.display   = state.bulkMode ? '' : 'none';
+  document.getElementById('single-right').style.display = state.bulkMode ? 'none' : '';
+  document.getElementById('bulk-right').classList.toggle('visible', state.bulkMode);
+}
+
+function applyPreset(key) {
+  const p = PRESETS[key];
+  if (!p) return;
+  state.pgName   = p.pgName;
+  state.country  = p.country;
+  state.city     = p.city;
+  state.religion = p.religion;
+  document.getElementById('pg-name').value  = p.pgName;
+  document.getElementById('country').value  = p.country;
+  document.getElementById('city').value     = p.city;
+  document.getElementById('religion').value = p.religion;
+}
+
+// ── Claude call ───────────────────────────────────────────────────────────────
+async function callClaude(name, country, city, religion, maxResults = 3) {
+  const systemPrompt =
+    `You are a world-class expert on the Joshua Project (JP) people group database — ` +
+    `a real, specific database of people groups worldwide, each identified by a unique ` +
+    `numeric PeopleID3 code and an exact PeopNameInCountry string. ` +
+    `You have deep knowledge of JP's actual database records including their exact names, ` +
+    `PeopleID3 codes, countries, languages, religions, and JP engagement scales. ` +
+    `You excel at recognizing when a reported name is an alternate spelling, transliteration, ` +
+    `colloquial term, caste sub-group, or generic category that maps to a specific JP record — ` +
+    `for example: "Adibasi"/"Adivasi" = generic term for tribal peoples (e.g. Santal (Sawntal) ` +
+    `PeopleID3 14743 in Bangladesh); "Dalit" = scheduled caste communities; ` +
+    `"Moor" = Muslim Sri Lankans. ` +
+    `CRITICAL RULES: ` +
+    `(1) Only return people groups that actually exist as real primary records in the JP database. ` +
+    `Do NOT hallucinate or invent people groups or PeopleID3 codes. ` +
+    `(2) JP records have a PRIMARY name (PeopNameInCountry) and may also have ALTERNATE names. ` +
+    `Always return the PRIMARY name — the one that has the PeopleID3 assigned to it. ` +
+    `If the reported name matches an alternate/alias name in JP, look up the primary record ` +
+    `that alternate name belongs to and return THAT primary name and its PeopleID3. ` +
+    `Never return an alternate name as the answer. ` +
+    `(3) The "name" field must be the EXACT verbatim primary PeopNameInCountry from JP — ` +
+    `copied character-for-character, never paraphrased or reworded. ` +
+    `(4) The "peopleid3" must be the real numeric ID for that JP primary record. ` +
+    `If you are uncertain of the exact ID, still provide your best known value but ` +
+    `set confidence to "low" or "medium" accordingly.`;
+
+  const lines = [`Reported name: "${name}"`];
+  if (country)  lines.push(`Country: ${country}`);
+  if (city)     lines.push(`City/Region: ${city}`);
+  if (religion) lines.push(`Religion: ${religion}`);
+
+  const userPrompt =
+    `A field worker has reported a people group. Find the real Joshua Project (JP) ` +
+    `database record that best matches this report.\n\n` +
+    lines.join('\n') + `\n\n` +
+    `The reported name may be:\n` +
+    `- A misspelling or alternate transliteration of the JP name\n` +
+    `- A colloquial, local-language, or abbreviated name\n` +
+    `- A generic category term that maps to one or more specific JP records\n` +
+    `  (e.g. "Adibasi" in Bangladesh → Santal (Sawntal), PeopleID3 14743)\n` +
+    `- A caste, sub-group, or dialect group that maps to a JP entry\n\n` +
+    `Return your top 1–${maxResults} real JP database records as valid JSON only ` +
+    `(no markdown fences, no extra text):\n` +
+    `[\n` +
+    `  {\n` +
+    `    "name": "Exact JP PeopNameInCountry — must match the real database record precisely",\n` +
+    `    "peopleid3": "Real numeric PeopleID3 from JP (e.g. \\"14743\\")",\n` +
+    `    "country": "Country name as in JP",\n` +
+    `    "language": "Primary language as in JP",\n` +
+    `    "religion": "Primary religion as in JP",\n` +
+    `    "jpscale": "JP scale 1–6 as string",\n` +
+    `    "frontier": true or false,\n` +
+    `    "confidence": "high" (certain this JP record exists and matches) | ` +
+                       `"medium" (likely match but some uncertainty) | ` +
+                       `"low" (best guess, not fully certain),\n` +
+    `    "reasoning": "1–3 sentences — why this JP record matches the reported name"\n` +
+    `  }\n` +
+    `]\n` +
+    `Only return real JP records you are confident exist. Do not invent entries.\n` +
+    `If no real JP match can be identified: [{"name": null, "confidence": "low", "reasoning": "explain"}]`;
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': state.anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic API error ${resp.status}`);
+  }
+
+  const data   = await resp.json();
+  const text   = data?.content?.[0]?.text || '';
+  // Strip markdown fences if model adds them despite instructions
+  const clean  = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  const parsed = JSON.parse(clean);
+  if (!Array.isArray(parsed)) throw new Error('Unexpected response format from Claude');
+  return parsed;
+}
+
+// ── Single Search ─────────────────────────────────────────────────────────────
+async function doSearch() {
+  const name = state.pgName.trim();
+  if (!name) { showError('Enter a people group name to search.'); return; }
+  if (!state.anthropicKey.trim()) { showError('Enter your Anthropic API key above.'); return; }
+
+  state.isLoading   = true;
+  state.results     = [];
+  state.lastError   = null;
+  state.hasSearched = true;
+  renderResults();
+
+  try {
+    state.results = await callClaude(
+      name,
+      state.country.trim(),
+      state.city.trim(),
+      state.religion.trim(),
+      3
+    );
+    if (state.results.length && state.results[0].name) {
+      saveToHistory(
+        { name, country: state.country.trim(), city: state.city.trim(), religion: state.religion.trim() },
+        state.results
+      );
+    }
+  } catch (err) {
+    state.lastError = err.message;
+  }
+
+  state.isLoading = false;
+  renderResults();
+}
+
+// ── Render Results ────────────────────────────────────────────────────────────
+function renderResults() {
+  const area = document.getElementById('results-area');
+
+  if (state.isLoading) {
+    area.innerHTML = `
+      <div class="state-box">
+        <div class="spinner"></div>
+        <div class="state-msg">Asking Claude&hellip;</div>
+        <div class="state-sub">Identifying the best Joshua Project match</div>
+      </div>`;
+    return;
+  }
+
+  if (state.lastError) {
+    area.innerHTML = `<div class="error-box"><strong>Error:</strong> ${escHtml(state.lastError)}</div>`;
+    return;
+  }
+
+  if (!state.hasSearched) {
+    area.innerHTML = `
+      <div class="state-box">
+        <div class="state-icon">&#128269;</div>
+        <div class="state-msg">Enter a reported people group name</div>
+        <div class="state-sub">Claude will identify the best Joshua Project match using its knowledge of JP people groups worldwide</div>
+      </div>`;
+    return;
+  }
+
+  if (!state.results.length || (state.results.length === 1 && !state.results[0].name)) {
+    const reason = state.results[0]?.reasoning || 'No match identified in Joshua Project database.';
+    area.innerHTML = `
+      <div class="state-box">
+        <div class="state-icon">&#10067;</div>
+        <div class="state-msg">No JP Match Found</div>
+        <div class="state-sub">${escHtml(reason)}</div>
+      </div>`;
+    return;
+  }
+
+  const cards = state.results.filter(r => r.name).map((r, i) => buildResultCard(r, i)).join('');
+  area.innerHTML = `<div class="results-grid">${cards}</div>`;
+}
+
+function buildResultCard(r, i) {
+  const reachStatus = (r.frontier === true || r.frontier === 'true') ? 'frontier'
+    : (r.jpscale === '1' || r.jpscale === '2') ? 'unreached'
+    : r.jpscale ? 'reached'
+    : null;
+
+  const reachBadge = reachStatus === 'frontier'
+    ? `<span style="color:var(--error)">&#128293; Frontier</span>`
+    : reachStatus === 'unreached'
+    ? `<span style="color:var(--error)">&#9888; Unreached</span>`
+    : reachStatus === 'reached'
+    ? `<span style="color:var(--success)">&#10003; Reached</span>`
+    : '';
+
+  const confClass = r.confidence === 'high' ? 'top' : r.confidence === 'medium' ? 'good' : 'possible';
+  const confLabel = r.confidence === 'high' ? 'High' : r.confidence === 'medium' ? 'Medium' : 'Low';
+  const isTop     = i === 0 && r.confidence === 'high';
+  const scaleDesc = r.jpscale ? (JP_SCALE_LABELS[r.jpscale] || `Scale ${r.jpscale}`) : '';
+
+  return `
+    <div class="result-card ${isTop ? 'top-match' : ''}">
+      <div class="card-main">
+        <div class="pg-name">${escHtml(r.name)}</div>
+        <div class="pg-meta">
+          ${r.country  ? `<span>&#127758; ${escHtml(r.country)}</span>`  : ''}
+          ${r.language ? `<span>&#128483; ${escHtml(r.language)}</span>` : ''}
+          ${r.religion ? `<span>&#127963; ${escHtml(r.religion)}</span>` : ''}
+          ${reachBadge}
+        </div>
+        <div class="claude-reason ${escHtml(r.confidence)}">
+          <span class="cr-label">Claude &mdash; ${confLabel} confidence</span>
+          ${escHtml(r.reasoning || '')}
+        </div>
+      </div>
+      <div class="score-badge">
+        <span class="match-badge ${confClass}">${confLabel}</span>
+        ${r.peopleid3 ? `
+          <div class="badge-detail">
+            PeopleID3<br>
+            <strong>${escHtml(String(r.peopleid3))}</strong>
+          </div>` : ''}
+        ${scaleDesc ? `
+          <div class="badge-detail">
+            JP Scale ${escHtml(r.jpscale)}<br>
+            <span style="font-size:9px">${escHtml(scaleDesc)}</span>
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function showError(msg) {
+  state.hasSearched = true;
+  document.getElementById('results-area').innerHTML =
+    `<div class="error-box">${escHtml(msg)}</div>`;
+}
+
+// ── Bulk Search ───────────────────────────────────────────────────────────────
+function clearBulk() {
+  document.getElementById('bulk-input').value = '';
+  document.getElementById('bulk-tbody').innerHTML =
+    '<tr><td colspan="9" class="bulk-empty">Paste names in the panel on the left, then click &ldquo;Process All&rdquo;</td></tr>';
+  document.getElementById('bulk-summary').textContent = '';
+  document.getElementById('export-btn').style.display = 'none';
+  document.getElementById('bulk-progress-wrap').style.display = 'none';
+  state.bulkItems = [];
+  state.bulkResults = [];
+  state.bulkProcessing = false;
+}
+
+async function doBulkSearch() {
+  if (!state.anthropicKey.trim()) { alert('Enter your Anthropic API key first.'); return; }
+  const raw = document.getElementById('bulk-input').value.trim();
+  if (!raw) { alert('Paste some names first.'); return; }
+  if (state.bulkProcessing) return;
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  state.bulkItems = lines.map(line => {
+    const parts = line.split(',').map(p => p.trim());
+    return { reportedName: parts[0], country: parts[1] || '' };
+  });
+  state.bulkResults = state.bulkItems.map(() => null);
+  state.bulkProcessing = true;
+
+  const tbody        = document.getElementById('bulk-tbody');
+  const progressWrap = document.getElementById('bulk-progress-wrap');
+  const progressBar  = document.getElementById('bulk-progress-bar');
+  const progressLbl  = document.getElementById('bulk-progress-label');
+  const exportBtn    = document.getElementById('export-btn');
+
+  progressWrap.style.display = '';
+  progressBar.style.width    = '0%';
+  exportBtn.style.display    = 'none';
+
+  tbody.innerHTML = state.bulkItems.map((item, i) => `
+    <tr class="bulk-row pending" id="bulk-row-${i}">
+      <td>${i + 1}</td>
+      <td>${escHtml(item.reportedName)}</td>
+      <td>${escHtml(item.country)}</td>
+      <td colspan="6" style="color:var(--muted)">Waiting&hellip;</td>
+    </tr>`).join('');
+
+  let completed = 0;
+
+  for (let i = 0; i < state.bulkItems.length; i++) {
+    const item = state.bulkItems[i];
+    const row  = document.getElementById(`bulk-row-${i}`);
+
+    row.className = 'bulk-row processing';
+    row.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${escHtml(item.reportedName)}</td>
+      <td>${escHtml(item.country)}</td>
+      <td colspan="6" style="color:var(--muted);font-style:italic">Asking Claude&hellip;</td>`;
+
+    try {
+      const matches = await callClaude(item.reportedName, item.country, '', '', 1);
+      const r = matches[0];
+      state.bulkResults[i] = r;
+
+      const conf = r.name ? (r.confidence || 'low') : 'low';
+      const reachStatus = (r.frontier === true || r.frontier === 'true') ? 'frontier'
+        : (r.jpscale === '1' || r.jpscale === '2') ? 'unreached'
+        : r.jpscale ? 'reached' : null;
+      const reachLabel = reachStatus === 'frontier' ? '🔥 Frontier'
+        : reachStatus === 'unreached' ? '⚠ Unreached'
+        : reachStatus === 'reached'   ? '✓ Reached' : '';
+
+      row.className = `bulk-row ${r.name ? conf : 'low'}`;
+      row.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${escHtml(item.reportedName)}</td>
+        <td>${escHtml(r.country || item.country)}</td>
+        <td>
+          <div class="bulk-match-name">${escHtml(r.name || '&mdash; No match &mdash;')}</div>
+          ${reachLabel ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${escHtml(reachLabel)}</div>` : ''}
+        </td>
+        <td style="font-family:monospace">${escHtml(r.peopleid3 || '&mdash;')}</td>
+        <td><span class="bulk-conf-badge ${conf}">${conf.toUpperCase()}</span></td>
+        <td>${escHtml(r.language || '&mdash;')}</td>
+        <td>${escHtml(r.religion || '&mdash;')}</td>
+        <td><div class="bulk-reasoning">${escHtml(r.reasoning || '')}</div></td>`;
+    } catch (err) {
+      state.bulkResults[i] = { error: err.message };
+      row.className = 'bulk-row error';
+      row.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${escHtml(item.reportedName)}</td>
+        <td>${escHtml(item.country)}</td>
+        <td colspan="6" style="color:var(--error)">${escHtml(err.message)}</td>`;
+    }
+
+    completed++;
+    progressBar.style.width    = Math.round((completed / state.bulkItems.length) * 100) + '%';
+    progressLbl.textContent    = `${completed} / ${state.bulkItems.length} processed`;
+
+    if (i < state.bulkItems.length - 1) await sleep(1000);
+  }
+
+  state.bulkProcessing = false;
+  document.getElementById('bulk-summary').textContent = ` — ${completed} processed`;
+  exportBtn.style.display = '';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function exportBulkCSV() {
+  if (!state.bulkResults.length) return;
+  const rows = [['#','Reported Name','Country','JP Match','PeopleID3','Confidence','Language','Religion','JP Scale','Frontier','Reasoning']];
+  state.bulkItems.forEach((item, i) => {
+    const r = state.bulkResults[i];
+    if (!r || r.error) {
+      rows.push([i+1, item.reportedName, item.country, 'ERROR','','','','','','', r?.error||'']);
+    } else {
+      rows.push([
+        i+1, item.reportedName, item.country,
+        r.name||'', r.peopleid3||'', r.confidence||'',
+        r.language||'', r.religion||'', r.jpscale||'',
+        (r.frontier === true || r.frontier === 'true') ? 'Yes' : 'No',
+        r.reasoning||'',
+      ]);
+    }
+  });
+  const csv  = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'pg_lookup_results.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+init();
+</script>
+</body>
+</html>
