@@ -531,8 +531,8 @@ function toggleTheme() {
 function init() {
   state.anthropicKey = localStorage.getItem('anthropic_api_key') || '';
 
-  // Restore theme preference
-  if (localStorage.getItem('pg_theme') === 'light') {
+  // Restore theme preference (default: light)
+  if (localStorage.getItem('pg_theme') !== 'dark') {
     document.body.classList.add('light');
     document.getElementById('theme-toggle').textContent = '☀️';
   }
